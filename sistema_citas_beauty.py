@@ -33,6 +33,7 @@ except:
 client = gspread.authorize(creds)
 
 sheet = client.open("Agenda Beauty").sheet1
+sheet_horarios = client.open("Agenda Beauty").worksheet("Horarios")
 
 # ----------------------
 # CONFIGURAR HORARIOS
@@ -69,7 +70,16 @@ if admin_mode:
 )
 
         if st.button("Guardar horarios"):
-            st.session_state.horarios[fecha_conf.strftime("%Y-%m-%d")] = [h.strftime("%H:%M") for h in horas]
+            fecha_guardar = fecha_conf.strftime("%Y-%m-%d")
+
+            for h in horas:
+                sheet_horarios.append_row([
+                    fecha_guardar,
+                    h.strftime("%H:%M")
+                ])
+
+            st.success("Horarios guardados")
+
             st.success("Horarios guardados")
             #st.write("DEBUG horarios:", st.session_state.horarios)
 
@@ -99,7 +109,13 @@ with st.form("form_cita", clear_on_submit=True):
     st.caption("Los horarios disponibles dependen del profesional seleccionado")
 
     fecha_str = fecha.strftime("%Y-%m-%d")
-    horarios = st.session_state.horarios.get(fecha_str, [])
+    data_horarios = sheet_horarios.get_all_records()
+
+    horarios = [
+        h["Hora"] for h in data_horarios
+        if h["Fecha"] == fecha_str
+    ]
+
     data = sheet.get_all_records()
     if data:
         df_temp = pd.DataFrame(data)
