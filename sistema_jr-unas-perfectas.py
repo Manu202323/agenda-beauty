@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime, time
 
 st.set_page_config(page_title="Sistema-Citas", layout="centered")
-st.title("💅 Agenda de Citas - [Nombre del Negocio]")
+st.title("💅 Agenda de Citas - Jr. Uñas Perfectas")
 
 # ----------------------
 # BASE (simulación BD local -> luego Google Sheets)
@@ -30,10 +30,22 @@ except:
     # En local (VS Code)
     creds = ServiceAccountCredentials.from_json_keyfile_name("credenciales.json", scope)
 
-client = gspread.authorize(creds)
+@st.cache_resource
+def conectar_sheets():
+    client = gspread.authorize(creds)
+    sheet = client.open("Agenda Jr Uñas Perfectas").worksheet("Citas")
+    sheet_horarios = client.open("Agenda Jr Uñas Perfectas").worksheet("Horarios")
+    return sheet, sheet_horarios
 
-sheet = client.open("Agenda Beauty").sheet1
-sheet_horarios = client.open("Agenda Beauty").worksheet("Horarios")
+sheet, sheet_horarios = conectar_sheets()
+
+@st.cache_data(ttl=120)
+def obtener_citas():
+    return sheet.get_all_records()
+
+@st.cache_data(ttl=120)
+def obtener_horarios():
+    return sheet_horarios.get_all_records()
 
 # ----------------------
 # CONFIGURAR HORARIOS
@@ -80,9 +92,6 @@ if admin_mode:
 
             st.success("Horarios guardados")
 
-            st.success("Horarios guardados")
-            #st.write("DEBUG horarios:", st.session_state.horarios)
-
 # ----------------------
 # AGENDAR CITA
 # ----------------------
@@ -90,7 +99,54 @@ st.subheader("📆 Agendar cita")
 
 fecha = st.date_input("Fecha", min_value=datetime.today(), key="fecha_cita")
 
+fecha_str = fecha.strftime("%Y-%m-%d")
+data_horarios = obtener_horarios()
+
+horarios = []
+
+for h in data_horarios:
+    if h.get("Fecha") == fecha_str:
+        horarios.append(h.get("Hora"))
+
+data = obtener_citas()
+if data:
+    df_temp = pd.DataFrame(data)
+    if "Fecha" in df_temp.columns:
+        ocupados = df_temp[
+            (df_temp["Fecha"] == fecha_str)
+        ]["Hora"].tolist()
+    else:
+        ocupados = []
+else:
+    ocupados = []
+from datetime import datetime
+
+ahora = datetime.now()
+hora_actual = ahora.strftime("%H:%M")
+
+if fecha_str == ahora.strftime("%Y-%m-%d"):
+    libres = [h for h in horarios if h not in ocupados and h > hora_actual]
+else:
+    libres = [h for h in horarios if h not in ocupados]
+
 with st.form("form_cita", clear_on_submit=True):
+    
+    profesionales = ["Karla", "Luisa", "Andrea"]
+    profesional = st.selectbox(
+        "Selecciona el profesional",
+        profesionales
+    )
+    st.caption("Los horarios disponibles dependen del profesional seleccionado")
+
+    if not profesional:
+        st.warning("Selecciona un profesional")
+
+    if libres:
+        hora = st.selectbox("Hora", libres)
+    else:
+        st.warning("Sin horarios disponibles para la fecha elegida.")
+        hora = None
+    
     nombre = st.text_input("Nombre usuario")
     telefono = st.text_input("Teléfono (10 dígitos)")
 
@@ -101,49 +157,7 @@ with st.form("form_cita", clear_on_submit=True):
             st.warning("El teléfono debe tener exactamente 10 dígitos")
 
     servicio = st.selectbox("Servicio", ["Manicure", "Pedicure", "Manos y Pies", "Otros"])
-    profesionales = ["Karla", "Luisa", "Andrea"]
-    profesional = st.selectbox(
-        "Selecciona el profesional",
-        profesionales
-    )
-    st.caption("Los horarios disponibles dependen del profesional seleccionado")
-
-    fecha_str = fecha.strftime("%Y-%m-%d")
-    data_horarios = sheet_horarios.get_all_records()
-
-    horarios = [
-        h["Hora"] for h in data_horarios
-        if h["Fecha"] == fecha_str
-    ]
-
-    data = sheet.get_all_records()
-    if data:
-        df_temp = pd.DataFrame(data)
-        ocupados = df_temp[
-            (df_temp["Fecha"] == fecha_str) &
-            (df_temp["Profesional"] == profesional)
-        ]["Hora"].tolist()
-    else:
-        ocupados = []
-    from datetime import datetime
-
-    ahora = datetime.now()
-    hora_actual = ahora.strftime("%H:%M")
-
-    if fecha_str == ahora.strftime("%Y-%m-%d"):
-        libres = [h for h in horarios if h not in ocupados and h > hora_actual]
-    else:
-        libres = [h for h in horarios if h not in ocupados]
-
-    if not profesional:
-        st.warning("Selecciona un profesional")
-
-    if libres:
-        hora = st.selectbox("Hora", libres)
-    else:
-        st.warning("Sin horarios disponibles para la fecha elegida.")
-        hora = None
-
+    
     observaciones = st.text_area("Observaciones (mínimo 5 caracteres)")
 
     st.caption("Complete los campos y presione el botón Agendar")
@@ -180,7 +194,7 @@ with st.form("form_cita", clear_on_submit=True):
 if admin_mode:
     st.subheader("📋 Gestión de citas")
 
-    data = sheet.get_all_records()
+    data = obtener_citas()
 
     if data:
         df = pd.DataFrame(data) 
@@ -249,7 +263,7 @@ if admin_mode:
 
 st.subheader("📲 Compartir con clientes")
 
-link = "https://manu202323-agenda-beauty-sistema-citas-beauty-3cklpq.streamlit.app/"
+link = "Pendiente"
 
 st.code(link)
 st.write("Comparte este link por WhatsApp para que tus clientes agenden citas fácilmente")
